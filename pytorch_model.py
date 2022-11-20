@@ -6,14 +6,17 @@ import torch.nn.functional as F
 import torch.optim as optim
 import tqdm
 import logging
+from torch.utils.tensorboard import SummaryWriter
 #-------------------------------------------------------------------
-# 手写数字识别案例 https://zhuanlan.zhihu.com/p/137571225
-# 实现tqdm https://blog.csdn.net/wxd1233/article/details/118371404
-# 实现logging  https://zhuanlan.zhihu.com/p/166671955
-# 实现learning rate 变化
-# 实现模型自定义初始化参数 https://blog.csdn.net/dss_dssssd/article/details/83990511
-# 实现模型的参数打印 https://blog.csdn.net/weixin_45250844/article/details/103099067 https://blog.csdn.net/qq_33590958/article/details/103544175
-# 实现参数量的计算 https://blog.csdn.net/confusingbird/article/details/103914102
+'''
+    手写数字识别案例 https://zhuanlan.zhihu.com/p/137571225
+    实现tqdm https://blog.csdn.net/wxd1233/article/details/118371404
+    实现logging  https://zhuanlan.zhihu.com/p/166671955
+    实现learning rate 变化
+    实现模型自定义初始化参数 https://blog.csdn.net/dss_dssssd/article/details/83990511
+    实现模型的参数打印 https://blog.csdn.net/weixin_45250844/article/details/103099067 https://blog.csdn.net/qq_33590958/article/details/103544175
+    实现参数量的计算 https://blog.csdn.net/confusingbird/article/details/103914102
+'''
 #-------------------------------------------------------------------
 
 #-----------------------init----------------------------------------
@@ -26,7 +29,8 @@ ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
 logger = logging.getLogger()
 logger.addHandler(ch)
-
+# 创建summarywriter对象，设置tensboard记录文件的地址
+tb_writer = SummaryWriter(log_dir="runs/tensorboard")
 #-----------------------parameters----------------------------------
 n_epochs = 10
 batch_size_train = 64
@@ -67,17 +71,17 @@ class Net(nn.Module):
         self.conv2_drop = nn.Dropout2d()
         self.fc1 = nn.Linear(320, 50)
         self.fc2 = nn.Linear(50, 10)
-        # 自定义参数
+        # 自定义初始化方法
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, -100)
+                nn.init.xavier_uniform_(m.weight)
+                nn.init.constant_(m.bias, 0)
             # 也可以判断是否为conv2d，使用相应的初始化方式
             elif isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight.item(), 1)
-                nn.init.constant_(m.bias.item(), 0)
+            # elif isinstance(m, nn.BatchNorm2d):
+            #     nn.init.constant_(m.weight.item(), 1)
+            #     nn.init.constant_(m.bias.item(), 0)
 
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
@@ -113,6 +117,13 @@ test_counter = [i*len(train_loader.dataset) for i in range(n_epochs + 1)]
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 network = network.to(device)
+#------------------------------visualization------------------------------------
+# model structure visualization
+# pictures size:(28, 28, 1) .Model need a dimension to represent batch size, so i need to add a dimension.
+# I choose (1, 1, 28, 28) as input.(batchs, channels, height, width)
+test_input = torch.zeros((1, 1, 28, 28), device=device)
+tb_writer.add_graph(network, test_input)
+
 
 #-------------------------------train-------------------------------------------
 def train(epoch):
@@ -131,12 +142,12 @@ def train(epoch):
         optimizer.step()
         # 设置进度条前的信息
         loop.set_description(f'Epoch [{epoch}/{n_epochs}]')
-        # 设置显示
+        # 设置进度条后的提示
         loop.set_postfix(loss=loss.item())
         if batch_idx % log_interval == 0:
-            #     print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-            #         epoch, batch_idx * len(data), len(train_loader.dataset),
-            #         100. * batch_idx / len(train_loader), loss.item()))
+            # print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+            #     epoch, batch_idx * len(data), len(train_loader.dataset),
+            #     100. * batch_idx / len(train_loader), loss.item()))
 
             train_losses.append(loss.item())
             train_counter.append(
@@ -160,12 +171,17 @@ def test():
             correct += pred.eq(target.data.view_as(pred)).sum()
         test_loss /= len(test_loader.dataset)
         test_losses.append(test_loss)
+    acc = 100. * correct / len(test_loader.dataset)
     logging.info('\nTest set: Avg. loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
+        acc))
+    return acc, test_loss
 
 
 for epoch in range(1, n_epochs + 1):
     train(epoch)
-    test()
+    acc, loss = test()
     lr_scheduler.step()
+    # tensorboard add scalar. Input do not accept tensor.
+    tb_writer.add_scalar('loss', loss, epoch)
+    tb_writer.add_scalar('acc', acc, epoch)
