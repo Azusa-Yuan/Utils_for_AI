@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import pickle
 import h5py as h5
+import os
 
 #------------------------------------------------------
 """
@@ -43,9 +44,16 @@ class frame_process:
             data = data.values
         return data
 
+def Load_csv(csv_file: str):
+    if not os.path.exists(csv_file):
+        print("no file")
+        return
+    data = np.load(csv_file)
+    return data
+
 # h5文件 由key value组成,但不是dict https://www.cnblogs.com/yld321/p/14851388.html
 def Load_h5(h5_file: str):
-    if not os.path.exists(HDF_file):
+    if not os.path.exists(h5_file):
         print("no file")
         return
     with h5.File(h5_file, "r") as f:

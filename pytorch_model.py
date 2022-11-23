@@ -121,7 +121,7 @@ network = network.to(device)
 # model structure visualization
 # pictures size:(28, 28, 1) .Model need a dimension to represent batch size, so i need to add a dimension.
 # I choose (1, 1, 28, 28) as input.(batchs, channels, height, width)
-test_input = torch.zeros((1, 1, 28, 28), device=device)
+test_input = torch.ones((1, 1, 28, 28), device=device)
 tb_writer.add_graph(network, test_input)
 
 
